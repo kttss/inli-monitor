@@ -1,0 +1,58 @@
+name: inli monitor
+
+on:
+  # Toutes les 5 minutes, de 9h a 22h heure de Paris (ETE, UTC+2).
+  # En hiver (UTC+1), remplacer "7-19" par "8-20".
+  # 5 min est le minimum autorise par GitHub. Les runs planifies sont
+  # mis en file d'attente : compter 5 a 20 min de decalage reel.
+  schedule:
+    - cron: "*/5 7-19 * * *"
+  # Permet de lancer le workflow a la main depuis l'onglet Actions
+  workflow_dispatch:
+
+# Necessaire pour que le job puisse commiter inli_state.json
+permissions:
+  contents: write
+
+# Evite que deux runs se marchent dessus sur le push du state
+concurrency:
+  group: inli-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monitor
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          # Decommenter pour surcharger l'URL sans toucher au code :
+          # SEARCH_URL: ${{ vars.SEARCH_URL }}
+        run: python inli_monitor.py
+
+      - name: Persist state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add inli_state.json || exit 0
+          git diff --staged --quiet && echo "Aucun changement de state" && exit 0
+          git commit -m "chore: update inli state [skip ci]"
+          git pull --rebase --autostash
+          git push
