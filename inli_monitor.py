@@ -5,12 +5,14 @@ Principe :
   1. Appelle l'URL de recherche in'li (filtres appliques cote serveur)
   2. Parse les annonces du HTML
   3. Compare avec les references deja vues (inli_state.json)
-  4. Envoie un mail si nouveaute
+  4. Envoie un mail et/ou une notification Telegram si nouveaute
 
 Config via variables d'environnement (GitHub Secrets) :
   GMAIL_ADDRESS       adresse Gmail expeditrice
   GMAIL_APP_PASSWORD  mot de passe d'application Gmail (16 caracteres)
   RECIPIENT_EMAIL     adresse de reception des alertes
+  TELEGRAM_BOT_TOKEN  (optionnel) token du bot Telegram
+  TELEGRAM_CHAT_ID    (optionnel) ID du chat Telegram
   SEARCH_URL          (optionnel) URL de recherche in'li, sinon valeur par defaut
 """
 
@@ -41,6 +43,10 @@ STATE_FILE = "inli_state.json"
 GMAIL_ADDRESS = os.environ["GMAIL_ADDRESS"]
 GMAIL_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
+
+# Telegram (optionnel)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 HEADERS = {
     "User-Agent": (
@@ -205,6 +211,36 @@ def send_email(new_offers: list) -> None:
 
 
 # ─────────────────────────────────────────────
+# TELEGRAM
+# ─────────────────────────────────────────────
+def send_telegram(new_offers: list) -> None:
+    """Envoie une notification Telegram avec les nouvelles annonces."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        log.info("Telegram non configure, notification ignoree")
+        return
+
+    lines = [f"🏠 *{len(new_offers)} nouvelle(s) annonce(s) in'li*\n"]
+    for o in new_offers:
+        lines.append(
+            f"• [{o['city']} — {o['price']} € cc]({o['link']})\n"
+            f"  {o['rooms']} pièces | {o['area']} m² | réf. {o['id']}"
+        )
+    lines.append(f"\n[Voir la recherche]({SEARCH_URL})")
+    text = "\n".join(lines)
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+    }
+    r = requests.post(url, json=payload, timeout=10)
+    r.raise_for_status()
+    log.info(f"Notification Telegram envoyee au chat {TELEGRAM_CHAT_ID}")
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def main() -> None:
@@ -223,6 +259,7 @@ def main() -> None:
                 f"{o['rooms']}p | {o['area']} m2 | {o['link']}"
             )
         send_email(new)
+        send_telegram(new)
     else:
         log.info(f"Aucune nouveaute ({len(offers)} annonce(s) deja connue(s))")
 
