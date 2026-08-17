@@ -6,7 +6,8 @@ on:
   # 5 min est le minimum autorise par GitHub. Les runs planifies sont
   # mis en file d'attente : compter 5 a 20 min de decalage reel.
   schedule:
-    - cron: "*/5 7-19 * * *"
+    # Lundi-Vendredi uniquement (1-5), toutes les 5 min de 9h a 22h Paris
+    - cron: "*/5 7-19 * * 1-5"
   # Permet de lancer le workflow a la main depuis l'onglet Actions
   workflow_dispatch:
 
